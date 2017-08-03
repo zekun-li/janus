@@ -1,0 +1,7 @@
+caffe/
+keyfile/
+logs/
+weights/
+*.pkl
+*.pyc
+*.py~

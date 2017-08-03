@@ -203,8 +203,10 @@ def train_with_generator(snap_weight = None):
 
     csv_logger = CSVLogger('logs/'+prefix+'-train.log')
     model_save_path = 'weights/'+prefix+'-{epoch:02d}-{val_loss:.2f}.hdf5'
+    model_save_best = 'weights/best-'+prefix+'-{epoch:02d}-{val_loss:.2f}.hdf5'
     check_point = ModelCheckpoint(model_save_path, save_best_only=False,save_weights_only=False,period = 10)
-    model.fit_generator(trn, steps_per_epoch = 2000, epochs = 500, validation_data = val, validation_steps = 2000, callbacks = [csv_logger, check_point])
+    check_point_best = ModelCheckpoint(model_save_best, save_best_only=True,save_weights_only=False)
+    model.fit_generator(trn, steps_per_epoch = 2000, epochs = 500, validation_data = val, validation_steps = 2000, callbacks = [csv_logger, check_point, check_point_best])
 
 
 def test_avgpool_with_generator():
