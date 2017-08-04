@@ -90,7 +90,7 @@ def classifier(initial_weights = tmp_dir +'big_caffe_clf_weights.pkl'):
     
     return clf
 
-def template_classifier(l_rate = 0.01):
+def template_classifier():
     # ------------------------normalize subjects ---------------------
     all_people = Input(shape=(None, len_feature),name = 'feat') # nb_photos_per_person x feature_vector_length
     mean_all_people = Lambda(mean_subjects, output_shape = stats_subjects_shape, name = 'mean layer')(all_people)
@@ -104,7 +104,6 @@ def template_classifier(l_rate = 0.01):
     pooled_template = merge(inputs = [all_people, weights], mode = fun_weighted_sum, output_shape = fun_weighted_sum_shape, name = 'weighted_sum')
     softmax_proba = classifier()(pooled_template)     
     
-    #sgd = keras.optimizers.SGD(lr=l_rate, momentum=0.9, decay=0.0, nesterov=False)
     model = Model(inputs = [all_people],outputs = [softmax_proba])
     model.compile(optimizer = 'adadelta', loss = 'categorical_crossentropy', metrics = ['accuracy'])
     
