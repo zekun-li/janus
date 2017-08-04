@@ -2,6 +2,7 @@ caffe/
 keyfile/
 logs/
 weights/
+get_test_features/
 *.pkl
 *.pyc
 *.py~

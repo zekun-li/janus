@@ -1,11 +1,12 @@
 import sys
 import os
 import numpy as np
-gpu_id = '4'
+gpu_id = '1'
+#os.environ["THEANO_FLAGS"] = "device=gpu%s,floatX=float32,profile=True,profile_memory=True" % gpu_id
 os.environ["THEANO_FLAGS"] = "device=gpu%s,floatX=float32" % gpu_id
-#os.environ["THEANO_FLAGS"] = "device=gpu%s,floatX=float32,exception_verbosity=high" % gpu_id
 print os.environ["THEANO_FLAGS"]
 #sys.path.insert(1,"/nfs/isicvlnas01/users/yue_wu/thirdparty/keras_1.2.0/")
+import keras
 from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Dropout,Dense,Input,merge
@@ -24,6 +25,7 @@ import random
 #nb_class_labels = 68465
 nb_class_labels = 68906
 len_feature = 2048
+tmp_dir= '/lfs2/tmp/zekunl/'
  
 # x is 3D tensor, nb_subjects x nb_photos_per_subject x len_feature
 def mean_subjects(x):
@@ -73,7 +75,7 @@ def fun_weighted_sum_shape(input_shapes):
     all_people_shape, _ = input_shapes
     return tuple((all_people_shape[0],all_people_shape[-1]))
 
-def classifier(initial_weights = 'caffe/big_caffe_clf_weights.pkl'):
+def classifier(initial_weights = tmp_dir +'big_caffe_clf_weights.pkl'):
     clf = Sequential(name = "pred")
     clf.add(Dense(nb_class_labels, activation = 'softmax', input_shape = (len_feature,)))
     
@@ -88,7 +90,7 @@ def classifier(initial_weights = 'caffe/big_caffe_clf_weights.pkl'):
     
     return clf
 
-def template_classifier():
+def template_classifier(l_rate = 0.01):
     # ------------------------normalize subjects ---------------------
     all_people = Input(shape=(None, len_feature),name = 'feat') # nb_photos_per_person x feature_vector_length
     mean_all_people = Lambda(mean_subjects, output_shape = stats_subjects_shape, name = 'mean layer')(all_people)
@@ -102,6 +104,7 @@ def template_classifier():
     pooled_template = merge(inputs = [all_people, weights], mode = fun_weighted_sum, output_shape = fun_weighted_sum_shape, name = 'weighted_sum')
     softmax_proba = classifier()(pooled_template)     
     
+    #sgd = keras.optimizers.SGD(lr=l_rate, momentum=0.9, decay=0.0, nesterov=False)
     model = Model(inputs = [all_people],outputs = [softmax_proba])
     model.compile(optimizer = 'adadelta', loss = 'categorical_crossentropy', metrics = ['accuracy'])
     
@@ -123,60 +126,6 @@ def template_classifier():
 
 
     return model,mean_model, norm_model, weight_model, pool_model
-
-def data_generator(data_list, mode = 'training', nb_epoch = -1, batch_size = 3):
-    # hardcode probability to generate num_photos_per_person
-    p_array = [ 0.29991916,  0.20776071,  0.14389652,  0.09943411,  0.06952304, 0.04850445,  0.03395311,  0.02425222,  0.01697656,  0.01293452, 0.00970089,  0.00727567,  0.00565885,  0.00485044,  0.00404204, 0.00323363,  0.00323363,  0.00242522,  0.00242522]
-    size_array = np.arange(21)[2:]
-    num_photos_per_person = np.random.choice(size_array, size=1,replace = True, p=p_array)[0]
-    epoch = 0
-    nb_subjects = len(data_list)
-    index_array = range(nb_subjects)
-    batch_index = 0
-    while ( epoch < nb_epoch ) or (nb_epoch < 0):
-        if batch_index == 0:
-            if (mode == "training"):
-                np.random.shuffle(index_array)
-        current_index = (batch_index * batch_size) % nb_subjects
-        if nb_subjects > current_index + batch_size:
-            current_batch_size = batch_size
-            batch_index += 1
-        else:
-            current_batch_size = nb_subjects - current_index
-            batch_index = 0
-
-        pick_indices = index_array[current_index: current_index + current_batch_size]
-        buffer = None
-        features = []
-        feature_labels = []
-        for subject_idx in pick_indices:
-            subject = data_list[subject_idx]
-            num_photos = len(subject['features'])
-            if num_photos >= num_photos_per_person:
-                # add (num_photos_per_person) number of photos to buffer
-                pick_photo_idx = random.sample(range(num_photos), num_photos_per_person)
-               
-            else:
-                # add all photos to buffer and append (num_photos_per_person - num_photos) to buffer
-                repeat_photo_idx = random.sample(range(num_photos), (num_photos_per_person - num_photos))
-                pick_photo_idx = range(num_photos)+repeat_photo_idx
-
-            if features == []:
-                features = data_list[subject_idx]['features'][[pick_photo_idx]][np.newaxis,:]
-                feature_labels = data_list[subject_idx]['labels']
-                feature_labels = to_categorical(feature_labels, nb_class_labels )
-            else:
-                features = np.vstack((features, data_list[subject_idx]['features'][[pick_photo_idx]][np.newaxis,:]))
-                tmp_labels = data_list[subject_idx]['labels']
-                feature_labels = np.vstack((feature_labels, to_categorical(tmp_labels,nb_class_labels)))
-
-
-        #print "epoch: ", epoch, "batch_idx", current_index, "batch size:", current_batch_size
-
-        epoch = epoch +1
-        buffer = (features,feature_labels)
-        if ( buffer is not None):
-            yield buffer
         
 
 def test_nn():
@@ -210,8 +159,12 @@ def test_nn():
     print np.abs(model_pool_out - np_verify_out).sum() # close to 0
     
 def train_with_generator(snap_weight = None):
-    key_file_base = '/nfs/isicvlnas01/users/zekunl/projects/janus/keyfile/keys/'
-    lmdb_base = '/nfs/isicvlnas01/projects/glaive/expts/00080-zekun-featex-1/expts/features/'
+    #key_file_base = '/nfs/isicvlnas01/users/zekunl/projects/janus/keyfile/keys/'
+    key_file_base = tmp_dir
+    lmdb_base = tmp_dir
+    feat_per_batch = 512
+
+
     lmdb_file0 = 'comb-featexCOW-crop.lmdb'
     lmdb_file1 = 'comb-featexCOW-real.lmdb'
     lmdb_file2 = 'comb-featexCOW-render-45.lmdb'
@@ -226,7 +179,7 @@ def train_with_generator(snap_weight = None):
 
     p_array = [ 0.29991916,  0.20776071,  0.14389652,  0.09943411,  0.06952304, 0.04850445,  0.03395311,  0.02425222,  0.01697656,  0.01293452, 0.00970089,  0.00727567,  0.00565885,  0.00485044,  0.00404204, 0.00323363,  0.00323363,  0.00242522,  0.00242522]
 
-    trn = keras_utils.DataGenerator( [[lmdb_base + lmdb_file0, key_file_base + key_file0],[lmdb_base + lmdb_file1, key_file_base + key_file1],[lmdb_base + lmdb_file2, key_file_base + key_file2],[lmdb_base + lmdb_file3, key_file_base + key_file3],[lmdb_base + lmdb_file4, key_file_base + key_file4]], mode = 'training', nb_batches_per_epoch = 2000, max_feat_per_batch = 512, tmplt_size_proba_list = p_array )
+    trn = keras_utils.DataGenerator( [[lmdb_base + lmdb_file0, key_file_base + key_file0],[lmdb_base + lmdb_file1, key_file_base + key_file1],[lmdb_base + lmdb_file2, key_file_base + key_file2],[lmdb_base + lmdb_file3, key_file_base + key_file3],[lmdb_base + lmdb_file4, key_file_base + key_file4]], mode = 'training', nb_batches_per_epoch = 2000, max_feat_per_batch = feat_per_batch, tmplt_size_proba_list = p_array )
     #print trn[0][0]['feat'].shape,np.nonzero(trn[0][1]['pred'])
 
     val_mode = 'val'
@@ -236,9 +189,9 @@ def train_with_generator(snap_weight = None):
     val_key_file3 = val_mode + '-' +lmdb_file3.split('.lmdb')[0] + '.key'
     val_key_file4 = val_mode + '-' +lmdb_file4.split('.lmdb')[0] + '.key'
     
-    val = keras_utils.DataGenerator( [[lmdb_base + lmdb_file0, key_file_base + val_key_file0],[lmdb_base + lmdb_file1, key_file_base + val_key_file1],[lmdb_base + lmdb_file2, key_file_base + val_key_file2],[lmdb_base + lmdb_file3, key_file_base + val_key_file3],[lmdb_base + lmdb_file4, key_file_base + val_key_file4]], mode = 'validating', nb_batches_per_epoch = 2000, max_feat_per_batch = 512, tmplt_size_proba_list = p_array )
+    val = keras_utils.DataGenerator( [[lmdb_base + lmdb_file0, key_file_base + val_key_file0],[lmdb_base + lmdb_file1, key_file_base + val_key_file1],[lmdb_base + lmdb_file2, key_file_base + val_key_file2],[lmdb_base + lmdb_file3, key_file_base + val_key_file3],[lmdb_base + lmdb_file4, key_file_base + val_key_file4]], mode = 'validating', nb_batches_per_epoch = 2000, max_feat_per_batch = feat_per_batch, tmplt_size_proba_list = p_array )
 
-
+    prefix = 'adadelta-featperbatch'+str(feat_per_batch)
     model, mean_model, _, _, _ = template_classifier()
     model.summary()
     if snap_weight is not None:
@@ -246,16 +199,19 @@ def train_with_generator(snap_weight = None):
         print 'loading weights from ',snap_weight
         model.load_weights(snap_weight)
 
-    prefix = 'run2'
+
     csv_logger = CSVLogger('logs/'+prefix+'-train.log')
     model_save_path = 'weights/'+prefix+'-{epoch:02d}-{val_loss:.2f}.hdf5'
+    model_save_best = 'weights/best-'+prefix+'-{epoch:02d}-{val_loss:.2f}.hdf5'
     check_point = ModelCheckpoint(model_save_path, save_best_only=False,save_weights_only=False,period = 10)
-    model.fit_generator(trn, steps_per_epoch = 2000, epochs = 500, validation_data = val, validation_steps = 2000, callbacks = [csv_logger, check_point])
+    check_point_best = ModelCheckpoint(model_save_best, save_best_only=True,save_weights_only=False)
+    model.fit_generator(trn, steps_per_epoch = 2000, epochs = 500, validation_data = val, validation_steps = 2000, callbacks = [csv_logger, check_point, check_point_best])
 
 
 def test_avgpool_with_generator():
-    key_file_base = '/nfs/isicvlnas01/users/zekunl/projects/janus/keyfile/keys/'
-    lmdb_base = '/nfs/isicvlnas01/projects/glaive/expts/00080-zekun-featex-1/expts/features/'
+    #key_file_base = '/nfs/isicvlnas01/users/zekunl/projects/janus/keyfile/keys/'
+    key_file_base = tmp_dir
+    lmdb_base = tmp_dir
     lmdb_file0 = 'comb-featexCOW-crop.lmdb'
     lmdb_file1 = 'comb-featexCOW-real.lmdb'
     lmdb_file2 = 'comb-featexCOW-render-45.lmdb'
@@ -276,15 +232,6 @@ def test_avgpool_with_generator():
     mean_model.summary()
     print model.evaluate_generator(test, steps=2, max_q_size=10, workers=1)
     
-
-def training():
-    import cPickle as pickle
-    with open("dummy_file_small.pkl","r") as f:
-        dummy_file = pickle.load(f)
-    trn = data_generator(dummy_file, mode = 'testing', nb_epoch = 51, batch_size = 2)
-    model, _,_,_ = template_classifier()
-    model.fit_generator(trn, samples_per_epoch = 10,nb_epoch = 10,max_q_size = 2)
-
 
 if __name__ == "__main__":
     #test_nn()

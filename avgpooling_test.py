@@ -1,7 +1,7 @@
 import sys
 import os
 import numpy as np
-gpu_id = '0'
+gpu_id = '1'
 os.environ["THEANO_FLAGS"] = "device=gpu%s,floatX=float32" % gpu_id
 #os.environ["THEANO_FLAGS"] = "device=gpu%s,floatX=float32,exception_verbosity=high" % gpu_id
 print os.environ["THEANO_FLAGS"]
@@ -13,7 +13,7 @@ from keras.legacy.layers import Merge
 from keras.layers.convolutional import Conv1D
 from keras.utils.np_utils import to_categorical
 from keras.layers.wrappers import TimeDistributed
-from keras.layers.core import Lambda
+from keras.layers.core import Lambda,Reshape
 from keras.models import Model
 from keras.callbacks import ModelCheckpoint,CSVLogger
 from theano.tensor.nnet.nnet import softmax
@@ -43,6 +43,12 @@ def normalized_subjects(input_tensor):
 
 def normalized_output_shape(input_shape):
     return input_shape[0]
+
+def avg_pool(x):
+    return tt.mean(x, axis = 1)
+
+def avg_pool_shape( input_shape):
+    return tuple((input_shape[0], input_shape[-1]))
 
 def softmax3d( x ) :
     ndim = K.ndim(x)
@@ -106,8 +112,8 @@ def template_classifier():
     model.compile(optimizer = 'adadelta', loss = 'categorical_crossentropy', metrics = ['accuracy'])
     
     # ---------------------------average pooling --------------
-    
-    avgpool_softmax = classifier()(mean_all_people)
+    avg_people = Lambda(avg_pool, output_shape = avg_pool_shape, name = 'avg_pool_layer')(all_people)
+    avgpool_softmax = classifier()(avg_people)
     mean_model = Model(inputs = [all_people], outputs = [avgpool_softmax])
     mean_model.compile(optimizer = 'adadelta', loss = 'categorical_crossentropy', metrics = ['accuracy'])
     
@@ -276,7 +282,7 @@ def test_avgpool_with_generator():
 
     model, mean_model, _, _, _ = template_classifier()
     mean_model.summary()
-    print model.evaluate_generator(test, steps=500, max_q_size=10, workers=1)
+    print mean_model.evaluate_generator(test, steps=6000, max_q_size=10, workers=1)
     
 
 def training():

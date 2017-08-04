@@ -52,6 +52,12 @@ def softmax3d( x ) :
     s = K.sum( e, axis=1, keepdims=True)
     return e / s
 
+def weightedSum3d( x ) :
+    ndim = K.ndim(x)
+    abs_x = K.relu(x) #K.abs(x)
+    s = K.sum( abs_x, axis=1, keepdims=True)
+    return abs_x / s
+
 def weight_predictor( len_feature = 2048 ) :
     feat_in = Input( shape = ( None, len_feature ) ) # 3d, nb_sample, nb_image,nb_feat
     feat_d1 = Dropout( 0.25 )( feat_in )
@@ -163,7 +169,7 @@ def train_with_generator(snap_weight = None):
     key_file_base = tmp_dir
     lmdb_base = tmp_dir
     feat_per_batch = 512
-    l_rate = 0.01
+    sgd_lr = 0.0001
 
 
     lmdb_file0 = 'comb-featexCOW-crop.lmdb'
@@ -192,8 +198,8 @@ def train_with_generator(snap_weight = None):
     
     val = keras_utils.DataGenerator( [[lmdb_base + lmdb_file0, key_file_base + val_key_file0],[lmdb_base + lmdb_file1, key_file_base + val_key_file1],[lmdb_base + lmdb_file2, key_file_base + val_key_file2],[lmdb_base + lmdb_file3, key_file_base + val_key_file3],[lmdb_base + lmdb_file4, key_file_base + val_key_file4]], mode = 'validating', nb_batches_per_epoch = 2000, max_feat_per_batch = feat_per_batch, tmplt_size_proba_list = p_array )
 
-    prefix = 'sgdlr'+str(l_rate)+'-featperbatch'+str(feat_per_batch)
-    model, mean_model, _, _, _ = template_classifier(l_rate)
+    prefix = 'sgdlr'+str(sgd_lr)+'-featperbatch'+str(feat_per_batch)
+    model, mean_model, _, _, _ = template_classifier(l_rate = sgd_lr)
     model.summary()
     if snap_weight is not None:
         assert os.path.isfile(snap_weight)
