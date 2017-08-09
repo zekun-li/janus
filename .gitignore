@@ -3,6 +3,8 @@ keyfile/
 logs/
 weights/
 get_test_features/
+verify_weights/
+topK/
 *.pkl
 *.pyc
 *.py~

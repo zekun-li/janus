@@ -69,10 +69,11 @@ class TemplateSizeSeq( object ) :
     def __init__( self, 
                   nb_batches_per_epoch = 1000,
                   tmplt_size_proba_list = np.ones( [20, ] ) / 20., 
-                  mode = 'training' ) :
+                  mode = 'training',min_tmplt_size = 2 ) :
         self.mode = mode 
         self.nb_batches_per_epoch = nb_batches_per_epoch
         self.tmplt_size_proba_list = tmplt_size_proba_list
+        self.min_tmplt_size = min_tmplt_size
         self._parse_min_max_tmplt_size()
         self.nb_sizes = len( tmplt_size_proba_list )
     def _precompute_test_tmplt_size( self ) :
@@ -86,7 +87,8 @@ class TemplateSizeSeq( object ) :
             th0 = th1
         return precomputed_tmplt_size
     def _parse_min_max_tmplt_size( self ) :
-        min_size = 2
+        #min_size = 2
+        min_size = self.min_tmplt_size
         max_size = min_size + len( self.tmplt_size_proba_list )
         self.tmplt_size_list = range( min_size, max_size  )
         return
@@ -96,7 +98,8 @@ class TemplateSizeSeq( object ) :
         else :
             if ( self.precomputed_tmplt_size is None ) :
                 self.precomputed_tmplt_size = self._precompute_test_tmplt_size()
-            tmplt_size = self.precomputed_tmplt_size[ idx % self.nb_sizes ]
+            #tmplt_size = self.precomputed_tmplt_size[ idx % self.nb_sizes ]
+            tmplt_size = self.precomputed_tmplt_size[ idx % self.nb_batches_per_epoch ]
         return tmplt_size
 
 class DataGenerator( object ) :
